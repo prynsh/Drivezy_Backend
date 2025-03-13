@@ -93,12 +93,12 @@ app.get(
 
 
 
+  
 
 app.post("/ingest", async (req: Request, res: Response): Promise<any> => {
     try {
-      console.log("🔄 Starting ingestion process...");
+      console.log("Starting ingestion process...");
   
-
       const accessToken = req.session?.accessToken;
       if (!accessToken) {
         console.error("Unauthorized: No access token.");
@@ -106,14 +106,11 @@ app.post("/ingest", async (req: Request, res: Response): Promise<any> => {
       }
   
       console.log("Access token found. Authenticating Google Drive...");
-  
-
       const auth = new google.auth.OAuth2();
       auth.setCredentials({ access_token: accessToken });
   
       const drive = google.drive({ version: "v3", auth });
   
-    
       const query = "mimeType='text/plain' or mimeType='text/markdown'";
       const response = await drive.files.list({ q: query, fields: "files(id, name, webViewLink)" });
   
@@ -124,16 +121,31 @@ app.post("/ingest", async (req: Request, res: Response): Promise<any> => {
         return res.json({ message: "No files to process" });
       }
   
-    
       const pineconeIndex = pinecone.index(process.env.PINECONE_INDEX!);
-
-
-      
       console.log("Pinecone index initialized.");
   
+      const existingFileIds = new Set<string>();
+  
       for (const file of files) {
+        const fetchResponse = await pineconeIndex.fetch([file.id!]);
+  
+        if (fetchResponse.records && fetchResponse.records[file.id!]) {
+          existingFileIds.add(file.id!);
+        }
+      }
+  
+      console.log(`Found ${existingFileIds.size} already ingested files.`);
+  
+      const newFiles = files.filter((file) => !existingFileIds.has(file.id!));
+  
+      if (newFiles.length === 0) {
+        console.warn("No new files to ingest.");
+        return res.status(400).json({ error: "No new files to ingest" });
+      }
+  
+      for (const file of newFiles) {
         try {
-          console.log(`Processing file: ${file.name} (ID: ${file.id})`);
+          console.log(`Processing new file: ${file.name} (ID: ${file.id})`);
   
           const fileContentRes = await drive.files.get(
             { fileId: file.id!, alt: "media" },
@@ -150,7 +162,6 @@ app.post("/ingest", async (req: Request, res: Response): Promise<any> => {
   
           console.log(`Extracted text from ${file.name}:`, textContent.slice(0, 100) + "...");
   
-         
           const embeddingRes = await openai.embeddings.create({
             model: "text-embedding-ada-002",
             input: textContent,
@@ -164,7 +175,6 @@ app.post("/ingest", async (req: Request, res: Response): Promise<any> => {
           const embedding = embeddingRes.data[0].embedding;
           console.log(`Generated embedding for ${file.name}:`, embedding.slice(0, 5), "...");
   
-         
           await pineconeIndex.upsert([
             {
               id: file.id!,
@@ -175,7 +185,6 @@ app.post("/ingest", async (req: Request, res: Response): Promise<any> => {
               },
             },
           ]);
-          
   
           console.log(`Successfully stored ${file.name} in Pinecone.`);
         } catch (fileError) {
@@ -183,13 +192,14 @@ app.post("/ingest", async (req: Request, res: Response): Promise<any> => {
         }
       }
   
-      console.log("All files processed successfully.");
+      console.log("✅ Ingestion process completed.");
       res.json({ message: "Files processed successfully" });
     } catch (error) {
       console.error("Error in ingestion:", error);
       res.status(500).json({ error: "Failed to ingest files" });
     }
   });
+  
   
 
   app.post("/search", async (req: Request, res: Response): Promise<any> => {
