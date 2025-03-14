@@ -43,7 +43,7 @@ Ensure you have **Node.js** and **npm** installed on your machine.
    ```
 
 Add your credentials:
-- **Google OAuth 2.0 Client ID and Secret**: Obtain these from the Google Developer Console. Refer to this guide for setup instructions: [Google OAuth using TypeScript, Express.js, Passport.js & MongoDB](#).
+- **Google OAuth 2.0 Client ID and Secret**: Obtain these from the Google Developer Console. Refer to this guide for setup instructions: [Google OAuth using TypeScript, Express.js, Passport.js & MongoDB](https://developers.google.com/identity/protocols/oauth2).
 - **Pinecone API Key**: Obtain this from the Pinecone Console.
 
 ## Running the Backend
